@@ -1,27 +1,214 @@
 ---
 title: "cma_week4"
-author: "Annika"
+author: "Annika Hirsch"
 format: html
+execute: 
+  warning: false
+  message: false
+lang: en
 editor: visual
 ---
 
-## Quarto
+**Tasks:**
 
-Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+a\. Specify a temporal windows v for in which to measure Euclidean distances.
 
-## Running Code
+b\. Measure the distance from every point to every other point within this temporal window v.
 
-When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+c\. Remove “static points”: These are points where the average distance is less than a given threshold. This segments the trajectory into subtrajectories.
 
-```{r}
-1 + 1
-```
+d\. Now remove short subtrajectories: These are trajectories with a short duration (whereas “short” is tbd).
 
-You can add options to executable code like this
+# Demo
 
 ```{r}
-#| echo: false
-2 * 2
+library("readr")
+library("dplyr")
+library("sf")
+library("ggplot2")
+
+wildschwein <- read_delim("wildschwein_BE_2056.csv", ",")
+
+# Careful! What Timezone is assumed?
+sabi <- wildschwein |>
+    st_as_sf(coords = c("E", "N"), crs = 2056, remove = FALSE) |>
+    filter(TierName == "Sabi", DatetimeUTC >= "2015-07-01", DatetimeUTC < "2015-07-03")
 ```
 
-The `echo: false` option disables the printing of code (only output is displayed).
+## Task a
+
+I am choosing a temporal window, as suggested, of one hour.
+
+## Task b
+
+```{r}
+distance_by_element <- function(later, now) {
+  as.numeric(
+    st_distance(later, now, by_element = TRUE)
+  )
+}
+
+sabi <- sabi |>
+    mutate(
+        nMinus2 = distance_by_element(lag(geometry, 2), geometry),  # distance to pos -30 minutes
+        nMinus1 = distance_by_element(lag(geometry, 1), geometry),  # distance to pos -15 minutes
+        nPlus1  = distance_by_element(geometry, lead(geometry, 1)), # distance to pos +15 mintues
+        nPlus2  = distance_by_element(geometry, lead(geometry, 2))  # distance to pos +30 minutes
+    )
+```
+
+```{r}
+sabi <- sabi |>
+    rowwise() |>
+    mutate(
+        stepMean = mean(c(nMinus2, nMinus1, nPlus1, nPlus2))
+    ) |>
+    ungroup()
+
+sabi
+```
+
+## Task c
+
+```{r}
+sabi <- sabi |>
+    mutate(static = stepMean < mean(stepMean, na.rm = TRUE))
+
+sabi_filter <- sabi |>
+    filter(!static)
+
+sabi_filter |>
+    ggplot(aes(E, N)) +
+    geom_path() +
+    geom_point() +
+    coord_fixed() +
+    theme(legend.position = "bottom")
+```
+
+# Project data
+
+## Preparation
+
+```{r}
+library("FITfileR")
+
+activity <- readFitFile("kurz_auf_den_harder.fit")
+
+activity
+
+activity_records <- records(activity)
+activity_records
+
+# Transform into sf
+activity_sf <- st_as_sf(activity_records[["record_1"]],
+                        coords = c("position_long", "position_lat"),
+                        crs = 4326
+)
+
+# Change crs
+activity_sf <- st_transform(activity_sf, crs = 2056)
+
+coords <- st_coordinates(activity_sf)
+
+activity_sf <- cbind(activity_sf, coords)
+
+
+library("tmap")
+
+# Visualisation
+tmap_mode("view")
+
+# Create a line
+activity_line <- activity_sf %>%
+  summarise(do_union = FALSE) %>% 
+  st_cast("LINESTRING")
+
+# Change basemap
+tmap_options(basemaps = "OpenStreetMap")
+
+# Plot map
+tm_shape(activity_line) +
+  tm_lines() 
+```
+
+The data that I imported already is only from one day (more like less than 2 hours), so I am not going to shorten it even more (though it would be interesting to just look at the downhill parts).
+
+But I am going to delete the points where the GPS accuracy is higher than 30, because these point are at the beginning and the end of the activity and it seems, as if I was inside for these points.
+
+```{r}
+activity_sf <- subset(activity_sf, activity_sf$gps_accuracy<= 30)
+```
+
+## Task 1: Segmentation
+
+Implementation of steps a, b and c of the demo data.
+
+The temporal sampling rate seems to be around 1 second. So as my window I am going to choose 10 seconds:
+
+pos\[n-5\] to pos\[n\]
+
+...
+
+pos\[n-1\] to pos\[n\]
+
+pos\[n\] to pos\[n+1\]
+
+...
+
+pos\[n\] to pos\[n+5\]
+
+```{r}
+distance_by_element <- function(later, now) {
+  as.numeric(
+    st_distance(later, now, by_element = TRUE)
+  )
+}
+
+activity_sf <- activity_sf |>
+    mutate(
+        nMinus5 = distance_by_element(lag(geometry, 5), geometry), 
+        nMinus4 = distance_by_element(lag(geometry, 4), geometry),  
+        nMinus3 = distance_by_element(lag(geometry, 3), geometry),  
+        nMinus2 = distance_by_element(lag(geometry, 2), geometry),  
+        nMinus1 = distance_by_element(lag(geometry, 1), geometry),  
+        nPlus1  = distance_by_element(geometry, lead(geometry, 1)), 
+        nPlus2  = distance_by_element(geometry, lead(geometry, 2)),
+        nPlus3  = distance_by_element(geometry, lead(geometry, 3)),
+        nPlus4  = distance_by_element(geometry, lead(geometry, 4)),
+        nPlus5  = distance_by_element(geometry, lead(geometry, 5)),
+    )
+
+activity_sf <- activity_sf |>
+    rowwise() |>
+    mutate(
+        stepMean = mean(c(nMinus5, nMinus4, nMinus3, nMinus2, nMinus1, nPlus1, nPlus2, nPlus3, nPlus4, nPlus5))
+    ) |>
+    ungroup()
+
+activity_sf
+```
+
+Considering, that this was a mountainbiking activity, there should not be many static points, since this was a route that I already knew. The only static points should be breaks or waiting for hikers to pass. I do not think that using the mean value as threshold is going to work.
+
+I am checking the distribution of speed.
+
+```{r}
+hist(activity_sf$stepMean)
+```
+
+Judging from this, I am going to test with a threshold value of 1.
+
+```{r}
+activity_sf <- activity_sf |>
+    mutate(static = stepMean < 1)
+
+activity_filter <- activity_sf |>
+    filter(!static)
+
+activity_filter |>
+    ggplot(aes(X, Y)) +
+    geom_path() +
+    geom_point() +
+    coord_fixed() +
+    theme(legend.position = "bottom")
+```
