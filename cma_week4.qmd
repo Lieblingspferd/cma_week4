@@ -188,6 +188,8 @@ activity_sf <- activity_sf |>
 activity_sf
 ```
 
+## Task 2: Specify and apply threshold d
+
 Considering, that this was a mountainbiking activity, there should not be many static points, since this was a route that I already knew. The only static points should be breaks or waiting for hikers to pass. I do not think that using the mean value as threshold is going to work.
 
 I am checking the distribution of speed.
@@ -211,4 +213,65 @@ activity_filter |>
     geom_point() +
     coord_fixed() +
     theme(legend.position = "bottom")
+```
+
+```{r}
+hist(activity_filter$stepMean)
+```
+
+Seems to be a good threshold.
+
+## Task 3: Visualize segmented trajectories
+
+Now visualize the segmented trajectory spatially. Just like last week, you can use ggplot with `geom_path()`, `geom_point()` and `coord_equal()`. Assign `colour = static` within `aes()` to distinguish between segments *with* “movement” and *without*.
+
+```{r}
+activity_sf |>
+    ggplot(aes(X, Y, color = static)) +
+    geom_path() +
+    geom_point() +
+    coord_equal() +
+    theme(legend.position = "bottom")
+```
+
+## Task 4: Segment-based analysis
+
+```{r}
+rle_id <- function(vec) {
+    x <- rle(vec)$lengths
+    as.factor(rep(seq_along(x), times = x))
+}
+```
+
+```{r}
+activity_sf <- activity_sf |>
+    mutate(segment_id = rle_id(static))
+
+activity_sf |>
+    ggplot(aes(X, Y, color = segment_id)) +
+    geom_path() +
+    geom_point() +
+    coord_equal() #+ # the legend makes the plot illegible
+    #theme(legend.position = "bottom")
+```
+
+I am now supposed to remove short segments. In the task description they are classified as shorter than 5 min, but knowing the characteristics of my activity, that does not make sense here. So I am going to look at the data to determine short segments:
+
+```{r}
+plot(table(activity_sf$segment_id))
+```
+
+```{r}
+# Deleting the segments which have less than 10 points
+segment_filter <- activity_sf[activity_sf$segment_id %in% names(which(table(activity_sf$segment_id) > 10)), ]
+
+# Checkin the lengths:
+plot(table(segment_filter$segment_id))
+
+# Now plotting this:
+segment_filter |>
+    ggplot(aes(X, Y, color = segment_id)) +
+    geom_path() +
+    geom_point() +
+    coord_equal()
 ```
