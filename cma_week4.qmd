@@ -26,7 +26,9 @@ library("readr")
 library("dplyr")
 library("sf")
 library("ggplot2")
+```
 
+```{r}
 wildschwein <- read_delim("wildschwein_BE_2056.csv", ",")
 
 # Careful! What Timezone is assumed?
@@ -223,8 +225,6 @@ Seems to be a good threshold.
 
 ## Task 3: Visualize segmented trajectories
 
-Now visualize the segmented trajectory spatially. Just like last week, you can use ggplot with `geom_path()`, `geom_point()` and `coord_equal()`. Assign `colour = static` within `aes()` to distinguish between segments *with* “movement” and *without*.
-
 ```{r}
 activity_sf |>
     ggplot(aes(X, Y, color = static)) +
@@ -251,7 +251,7 @@ activity_sf |>
     ggplot(aes(X, Y, color = segment_id)) +
     geom_path() +
     geom_point() +
-    coord_equal() #+ # the legend makes the plot illegible
+    coord_equal() #+ # this type of legend makes the plot illegible
     #theme(legend.position = "bottom")
 ```
 
@@ -275,3 +275,224 @@ segment_filter |>
     geom_point() +
     coord_equal()
 ```
+
+## Task 5: Similarity measures
+
+```{r}
+pedestrian <- read_delim("pedestrian.csv", ",")
+
+nos <- unique(pedestrian$TrajID)
+library(RColorBrewer)
+pal <- brewer.pal(6, "Set1")
+
+p <- pedestrian |>
+    ggplot(aes(E, N, color = as.factor(TrajID))) +
+    geom_path() +
+    geom_point() +
+    coord_fixed() +
+    labs(x="", y="") +
+    theme_minimal()
+    #theme(axis.text.x=element_blank(), 
+    #      axis.ticks.x=element_blank(), 
+    #      axis.text.y=element_blank(),  
+    #      axis.ticks.y=element_blank() 
+    #      )
+
+p + facet_wrap(~TrajID) + ggtitle("Visual comparison of the 6 Trajectories") 
+
+```
+
+I've tried to get my plot as close to the picture in the instructions, but if I continue further I will just waste my time, to get the settings as close as possible. So this has to be enough.
+
+## Task 6: Calculate similarity
+
+```{r}
+#install.packages("SimilarityMeasures")
+library(SimilarityMeasures)
+
+help(package = "SimilarityMeasures")
+```
+
+```{r}
+# Creating the matrices for the trajectories
+# m rows (number of points)
+# n cols (dimension of the points)
+
+# Creating the subsets of the individual trajectories
+Traj1 <- pedestrian |>
+  subset(TrajID == 1) |>
+  select(E, N)
+
+Traj2 <- pedestrian |>
+  subset(TrajID == 2) |>
+  select(E, N)
+
+Traj3 <- pedestrian |>
+  subset(TrajID == 3) |>
+  select(E, N)
+
+Traj4 <- pedestrian |>
+  subset(TrajID == 4) |>
+  select(E, N)
+
+Traj5 <- pedestrian |>
+  subset(TrajID == 5) |>
+  select(E, N)
+
+Traj6 <- pedestrian |> 
+  subset(TrajID == 6) |>
+  select(E, N)
+
+# Transforming them into matrices
+Traj1 <- data.matrix(Traj1)
+
+Traj2 <- data.matrix(Traj2)
+
+Traj3 <- data.matrix(Traj3)
+
+Traj4 <- data.matrix(Traj4)
+
+Traj5 <- data.matrix(Traj5)
+
+Traj6 <- data.matrix(Traj6)
+```
+
+```{r}
+# Performing the similarity measures
+# Edit distance
+traj <- c("Traj1", "Traj2", "Traj3", "Traj4", "Traj5", "Traj6")
+
+# just a loop for comparing all trajectories. 
+# Reading through the task description again, I just need to compare to trajectory 1...
+# But I already have this loop now... In case I need it for something else, I am going to keep it.
+for (i in traj){ 
+  traj_index <- which(traj == i)
+  if (traj_index < length(traj)){
+    traj2 <- traj[(traj_index + 1): length(traj)] 
+  }
+  for (j in traj2){
+    if (i != j){
+      temp_i <- get(i)
+      temp_j <- get(j)
+      temp <- EditDist(temp_i, temp_j)
+      print(paste0("The Edit distance of ", i, " to ", j, " is: ", temp))
+    }
+  }
+}
+```
+
+```{r}
+# Initializing another vector to loop through the trajectories
+traj <- c("Traj2", "Traj3", "Traj4", "Traj5", "Traj6")
+
+# DTW
+dtw_values <- c()
+for (i in traj){
+  temp <- get(i)
+  dtw_values[which(traj == i)] <- DTW(Traj1, temp)
+}
+
+# Frechet Distance
+frechet_values <- c()
+for (i in traj){
+  temp <- get(i)
+  frechet_values[which(traj == i)] <- Frechet(Traj1, temp)
+}
+
+# Edit Distance
+edit_values <- c()
+for (i in traj){
+  temp <- get(i)
+  edit_values[which(traj == i)] <- EditDist(Traj1, temp)
+}
+
+# LCSS
+lcss_values <- c()
+for (i in traj){
+  temp <- get(i)
+  lcss_values[which(traj == i)] <- LCSS(Traj1, temp, errorMarg = 20)
+}
+```
+
+```{r}
+# plotting the similarity measures
+
+# DTW
+dtw_data <- data.frame(trajectory = traj, values = dtw_values)
+dtw <- ggplot(data = dtw_data, aes(x= trajectory, y = values,  fill = trajectory)) + 
+  geom_bar(stat = "identity") +
+  xlab("Trajectory") +
+  ylab("Value") 
+
+# Frechet 
+frechet_data <- data.frame(trajectory = traj, values = frechet_values)
+frechet <- ggplot(data = frechet_data, aes(x = trajectory, y = values, fill = trajectory)) + 
+  geom_bar(stat = "identity") +
+  xlab("Trajectory") + 
+  ylab("Value")
+
+# Edit
+edit_data <- data.frame(trajectory = traj, values = edit_values)
+edit <- ggplot(data = edit_data, aes(x = trajectory, y = values, fill = trajectory)) + 
+  geom_bar(stat = "identity") +
+  xlab("Trajectory") + 
+  ylab("Value")
+
+# LCSS
+lcss_data <- data.frame(trajectory = traj, values = lcss_values)
+lcss <- ggplot(data = lcss_data, aes(x = trajectory, y = values, fill = trajectory)) + 
+  geom_bar(stat = "identity") +
+  xlab("Trajectory") + 
+  ylab("Value")
+
+library(gridExtra)
+grid.arrange(dtw, frechet, edit, lcss, nrow = 2)
+```
+
+Works, but somehow the values are really off, compared to the values in the example plot...
+
+And I want the plot itself to be closer to the example... So I'm going to do it a different way.
+
+```{r}
+# I've got to store everything in one dataframe (in order to get the plot to look like I want it to)
+
+# And since the values were kind of off, I am going to recompute them since I don't trust them to be correct
+
+# Initializing the first values and a datframe
+similarity <- data.frame(measure = c(0), trajectory = c(0), value = c(0))
+
+# Similarity Measures:
+sim_meas <- c("DTW", "Edit Distance", "Fréchet Distance", "LCSS")
+for (i in sim_meas){
+  for (j in traj){
+    temp <- get(j)
+    if (i == "DTW"){
+      value <- DTW(Traj1, temp)
+    }
+    if (i == "Edit Distance"){
+      value <- EditDist(Traj1, temp)
+    }
+    if (i == "Fréchet Distance"){
+      value <- Frechet(Traj1, temp)
+    }
+    if (i == "LCSS"){
+      value <- LCSS(Traj1, temp, errorMarg = 20)
+    }
+    similarity[nrow(similarity) + 1, ] <- list(i, j, value)
+  }
+}
+
+
+# Don't forget to remove the first row in the end:
+similarity <- subset(similarity, measure != 0)
+
+# Then plotting it:
+s <- similarity |>
+    ggplot(aes(trajectory, value, fill = trajectory)) +
+    geom_bar(stat = "identity") +
+    labs(x="", y="")
+
+s + facet_wrap(~measure, scales = "free") + ggtitle("Computed similarities using different measures \nbetween trajectory 1 to all other trajectories") 
+```
+
+Still different results than the example in the exercise (considering I did compute them the same way, as I did before, it's not really surprising).
