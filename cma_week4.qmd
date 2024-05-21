@@ -1,23 +1,16 @@
 ---
-title: "cma_week4"
+title: "Computational Movement Analysis - Week 4"
 author: "Annika Hirsch"
-format: html
+format: 
+  html:
+    toc: true
+    toc-title: Contents
 execute: 
   warning: false
   message: false
 lang: en
 editor: visual
 ---
-
-**Tasks:**
-
-a\. Specify a temporal windows v for in which to measure Euclidean distances.
-
-b\. Measure the distance from every point to every other point within this temporal window v.
-
-c\. Remove “static points”: These are points where the average distance is less than a given threshold. This segments the trajectory into subtrajectories.
-
-d\. Now remove short subtrajectories: These are trajectories with a short duration (whereas “short” is tbd).
 
 # Demo
 
